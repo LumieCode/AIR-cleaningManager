@@ -1,0 +1,67 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Register</title>
+</head>
+
+<body>
+    <a href='index.php' target="blank">Manage tasks here.</a>
+    <?php
+    // connection
+    $servername = "localhost";
+    $username = "iva";
+    $password = "12345";
+    $dbname = "cw";
+    $conn = new mysqli($servername, $username, $password, $dbname);
+
+    // check if connection is successful
+    if ($conn->connect_error) {
+        die("Connection failed: " . $conn->connect_error);
+    }
+
+    mysqli_set_charset($conn, "utf8");
+
+    // input receive
+    if (isset($_POST['task'])) {
+        $task = $_POST['task'];
+        $sql = "SELECT name FROM clean_up WHERE id > 0";
+        $result = $conn->query($sql);
+
+        if (!$result) {
+            die("Query failed: " . $conn->error);
+        }
+
+        $rowNum = $result->num_rows;
+        $id = $rowNum + 2;
+        $sql = "SELECT * FROM clean_up WHERE name = '$task'";
+		$result = $conn->query($sql);
+
+        if (!$result) {
+            die("Query failed: " . $conn->error);
+        }
+         if ($result->num_rows > 0){
+			echo 'This task already exists';
+		 } else {
+			// adds a new task based on parameters
+			if (!empty($task)) {
+				$sql = "INSERT INTO clean_up (name, id) VALUES ('$task', '$id');";
+				if ($conn->query($sql)) {
+					echo "<p>Task added successfully!</p>";
+				} else {
+					die("Insertion failed: " . $conn->error);
+				}
+			}
+		 }
+    }
+    ?>
+
+    <!-- form for inputs -->
+    <form id="myForm" method='post' action='newTask.php'>
+        <label for="taskInput">Task name (no spaces)</label>
+        <input type='text' name='task' id='taskInput'>
+        <input type='submit' id='submit'>
+    </form>
+</body>
+</html>
