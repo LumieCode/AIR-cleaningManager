@@ -32,14 +32,19 @@ if ($result = $conn->query($sql)) {
         $given_date = date('Y-m-d', strtotime($given_datetime));
 
         // Compare today's date with the given date
-        if ($given_date == $today) {
-            $reset = false;
+        if ($given_date == $today){
+			$task_accomplished_today = true;
 		if ($row['date_Checked'] == $today){
             $checkedToday = true;
-            }
-        } else {
+            $reset == false;
+			}
+    else {
             $reset = true;
         }
+		}
+		else{
+		$task_accomplished_today = false;
+		}
 
         if ($reset) {
             // Prepare and execute query
@@ -60,7 +65,7 @@ if ($result = $conn->query($sql)) {
         // gets all the daily duty activities of the currently processed user
         $res = mysqli_query($conn, $query);
 
-        if ($res->num_rows > 0 && $reset == false) {
+        if ($res->num_rows > 0 && $task_accomplished_today == true) {
             $query = "SELECT checked FROM clean_up WHERE checked = 1 and id =" . $row["id"];
             $res = mysqli_query($conn, $query);
             if ($res->num_rows > 0 && $checkedToday) {
