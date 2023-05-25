@@ -1,5 +1,57 @@
 <?php
 $conn = mysqli_connect("localhost", "iva", "12345", "cw");
+
+
+$sql = "SELECT * FROM dle_users";
+if ($result = $conn->query($sql)) {
+    while ($row = $result->fetch_assoc()) {
+        $query = "SELECT time_end FROM log_action WHERE task_id = 5 AND user_id = " . $row["who_id"];
+        $resEndTime = $conn->query($query);
+        if ($resEndTime && $resEndTime->num_rows > 0) {
+            $resEndTimeArray = $resEndTime->fetch_assoc();
+            $given_datetime = $resEndTimeArray['time_end'];
+            $currentDateTime = new DateTime();
+            $given_datetime = new DateTime($given_datetime);
+            $timeDifference = $currentDateTime->diff($given_datetime);
+            
+            if ($timeDifference->days < 7) {
+                $stmt = $conn->prepare("UPDATE dle_users SET cleanerPosition = ? WHERE user_id = ?");
+                $completionStatusSend = 1;
+                $who_idSend = $row['who_id'];
+                $stmt->bind_param("ii", $completionStatusSend, $who_idSend);
+                
+                if ($stmt->execute()) {
+                    $successMsg = 'Record updated successfully';
+                } else {
+                    $errorMsg = 'Error updating record: ' . $stmt->error;
+                }
+            } else {
+                $stmt = $conn->prepare("UPDATE dle_users SET cleanerPosition = ? WHERE user_id = ?");
+                $completionStatusSend = 0;
+                $who_idSend = $row['who_id'];
+                $stmt->bind_param("ii", $completionStatusSend, $who_idSend);
+                
+                if ($stmt->execute()) {
+                    $successMsg = 'Record updated successfully';
+                } else {
+                    $errorMsg = 'Error updating record: ' . $stmt->error;
+                }
+            }
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
 $sql = "SELECT clean_up.name, id, who_id, when_, active, difficulty, date_Checked, dle_users.name AS uname 
         FROM clean_up 
         LEFT JOIN dle_users ON dle_users.user_id = who_id
@@ -64,25 +116,13 @@ if ($result = $conn->query($sql)) {
                 $errorMsg = 'Error updating record: ' . mysqli_error($conn);
             }
         }
-        $currentDateTime = new DateTime(); 
-		$given_datetime = new DateTime($given_datetime);
-		$timeDifference = $currentDateTime->diff($given_datetime);
+       
         $query = "SELECT id FROM log_action WHERE task_id = 5 and user_id = " . $row["who_id"];
         // gets all the daily duty activities of the currently processed user
         $res = mysqli_query($conn, $query);
-        if ($res->num_rows > 0 && $timeDifference->days < 7){
-			$stmt = mysqli_prepare($conn, "UPDATE dle_users SET cleanerPosition = ? WHERE user_id = ?");
-			$completionStatusSend = 1;
-			$who_idSend = mysqli_real_escape_string($conn, $row['who_id']);
-			 mysqli_stmt_bind_param($stmt, "ii", $completionStatusSend, $who_idSend);
-			 if (mysqli_stmt_execute($stmt)) {
-                // Query successful
-                $successMsg = 'Record updated successfully';
-            } else {
-                // Query failed
-                $errorMsg = 'Error updating record: ' . mysqli_error($conn);
-            }
-		}
+
+        
+
 		
         if ($res->num_rows > 0 && $task_accomplished_today == true) {
             $query = "SELECT checked FROM clean_up WHERE checked = 1 and id =" . $row["id"];
