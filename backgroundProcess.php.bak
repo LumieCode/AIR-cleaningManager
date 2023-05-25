@@ -1,6 +1,9 @@
 <?php
 $conn = mysqli_connect("localhost", "iva", "12345", "cw");
-$sql = "SELECT clean_up.name, id, who_id, when_, active, difficulty, date_Checked, dle_users.name AS uname FROM clean_up LEFT JOIN dle_users ON dle_users.user_id=who_id";
+$sql = "SELECT clean_up.name, id, who_id, when_, active, difficulty, date_Checked, dle_users.name AS uname 
+        FROM clean_up 
+        LEFT JOIN dle_users ON dle_users.user_id = who_id
+        ORDER BY difficulty DESC";
 // gets a bunch of stuff from the table
 if ($result = $conn->query($sql)) {
 
@@ -61,11 +64,28 @@ if ($result = $conn->query($sql)) {
                 $errorMsg = 'Error updating record: ' . mysqli_error($conn);
             }
         }
+        $currentDateTime = new DateTime(); 
+		$given_datetime = new DateTime($given_datetime);
+		$timeDifference = $currentDateTime->diff($given_datetime);
         $query = "SELECT id FROM log_action WHERE task_id = 5 and user_id = " . $row["who_id"];
         // gets all the daily duty activities of the currently processed user
         $res = mysqli_query($conn, $query);
-
-        if ($res->num_rows > 0 && $task_accomplished_today) {
+        if ($res->num_rows > 0 && $timeDifference->days < 7){
+			echo "<br>" . $row["who_id"];
+			$stmt = mysqli_prepare($conn, "UPDATE dle_users SET cleanerPosition = ? WHERE user_id = ?");
+			$completionStatusSend = 1;
+			$who_idSend = mysqli_real_escape_string($conn, $row['who_id']);
+			 mysqli_stmt_bind_param($stmt, "ii", $completionStatusSend, $who_idSend);
+			 if (mysqli_stmt_execute($stmt)) {
+                // Query successful
+                $successMsg = 'Record updated successfully';
+            } else {
+                // Query failed
+                $errorMsg = 'Error updating record: ' . mysqli_error($conn);
+            }
+		}
+		
+        if ($res->num_rows > 0 && $task_accomplished_today == true) {
             $query = "SELECT checked FROM clean_up WHERE checked = 1 and id =" . $row["id"];
             $res = mysqli_query($conn, $query);
             if ($res->num_rows > 0 && $checkedToday) {
@@ -81,12 +101,16 @@ if ($result = $conn->query($sql)) {
         echo "<td style='$appliedStyle' class='hobbits' data-userid=" . $row["who_id"] . " onclick='jf(" . $row["id"] . ")'  id=" . $row["id"] . ">" . $resArray[0] . "</td> ";
         echo "<td " . "class='executorIds'>" . $row["who_id"] . "</td>";
         echo "<td class='difficulty'>" . $row['difficulty'] . "</td>";
+		
+		
+		
+		
     }
     echo "</table>";
     $result->free();
 } else {
     echo "Ошибка: " . $conn->error;
 }
-echo $_POST['select'];
+
 mysqli_close($conn);
 ?>
