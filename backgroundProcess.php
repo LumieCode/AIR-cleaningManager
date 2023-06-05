@@ -1,4 +1,5 @@
 <?php
+
 $conn = mysqli_connect("localhost", "iva", "12345", "cw");
 
 
@@ -44,13 +45,14 @@ if ($result = $conn->query($sql)) {
 
 
 
-$sql = "SELECT date_Checked FROM clean_up WHERE 1=1";
-$date_checked_result = $conn->query($sql);
-$date_checked_results= mysqli_fetch_all($date_checked_result , MYSQLI_ASSOC);
-$date_checked_results_array= array_column($date_checked_results, 'date_Checked');
-$dateChecked = $date_checked_results_array[0];
- $today = date('Y-m-d');
-if($today != $dateChecked){
+$sql = "SELECT time_start FROM log_action WHERE 1=1";
+$date_inDB_result = $conn->query($sql);
+$date_inDB_row = mysqli_fetch_assoc($date_inDB_result);
+$date_inDB = date('Y-m-d', strtotime($date_inDB_row['time_start']));
+$today = date('Y-m-d');
+
+
+if($today != $date_inDB){
 $sql = "SELECT user_id FROM dle_users WHERE cleanerPosition = 1 ORDER BY difficulty_Elo";
 $result = $conn->query($sql);
 $count = $result->num_rows;
