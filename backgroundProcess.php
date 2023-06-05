@@ -5,9 +5,9 @@ $conn = mysqli_connect("localhost", "iva", "12345", "cw");
 $sql = "SELECT * FROM dle_users";
 if ($result = $conn->query($sql)) {
     while ($row = $result->fetch_assoc()) {
-        $query = "SELECT time_end FROM log_action WHERE task_id = 5 AND user_id = " . $row["who_id"];
+        $query = "SELECT time_end FROM log_action WHERE task_id = 5 AND user_id = " . $row["user_id"];
         $resEndTime = $conn->query($query);
-        if ($resEndTime && $resEndTime->num_rows > 0) {
+        if ($resEndTime->num_rows > 0) {
             $resEndTimeArray = $resEndTime->fetch_assoc();
             $given_datetime = $resEndTimeArray['time_end'];
             $currentDateTime = new DateTime();
@@ -15,9 +15,10 @@ if ($result = $conn->query($sql)) {
             $timeDifference = $currentDateTime->diff($given_datetime);
             
             if ($timeDifference->days < 7) {
+
                 $stmt = $conn->prepare("UPDATE dle_users SET cleanerPosition = ? WHERE user_id = ?");
                 $completionStatusSend = 1;
-                $who_idSend = $row['who_id'];
+                $who_idSend = $row["user_id"];
                 $stmt->bind_param("ii", $completionStatusSend, $who_idSend);
                 
                 if ($stmt->execute()) {
@@ -28,7 +29,7 @@ if ($result = $conn->query($sql)) {
             } else {
                 $stmt = $conn->prepare("UPDATE dle_users SET cleanerPosition = ? WHERE user_id = ?");
                 $completionStatusSend = 0;
-                $who_idSend = $row['who_id'];
+                $who_idSend = $row["user_id"];
                 $stmt->bind_param("ii", $completionStatusSend, $who_idSend);
                 
                 if ($stmt->execute()) {
@@ -43,10 +44,59 @@ if ($result = $conn->query($sql)) {
 
 
 
+$sql = "SELECT date_Checked FROM clean_up WHERE 1=1";
+$date_checked_result = $conn->query($sql);
+$date_checked_results= mysqli_fetch_all($date_checked_result , MYSQLI_ASSOC);
+$date_checked_results_array= array_column($date_checked_results, 'date_Checked');
+$dateChecked = $date_checked_results_array[0];
+ $today = date('Y-m-d');
+if($today != $dateChecked){
+$sql = "SELECT user_id FROM dle_users WHERE cleanerPosition = 1 ORDER BY difficulty_Elo";
+$result = $conn->query($sql);
+$count = $result->num_rows;
+$user_ids = array(); // Initialize an empty array
 
+if ($count > 0) {
+    $rows = mysqli_fetch_all($result, MYSQLI_ASSOC);
+    $user_ids = array_column($rows, 'user_id');
+}
 
+$query = "SELECT name FROM clean_up  ORDER BY difficulty DESC";
+$res =  $conn->query($query);
+$clean_up = $res->num_rows;
+$clean_upNames = array(); // Initialize an empty array
 
+if ($clean_up > 0) {
+    $res_rows = mysqli_fetch_all($res, MYSQLI_ASSOC);
+    $clean_upNames = array_column($res_rows, 'name');
+}
 
+$taskGroupRemainder = $clean_up % $count;
+
+$taskGroupSize = ($clean_up - $taskGroupRemainder) / $count;
+
+$currentRegressor = 0;
+$regressionsLeftUntilTheNextRegressor = $taskGroupSize;// i was binging ORV the day before :)
+for ($i = 0; $i < count($clean_upNames); $i++) {
+	
+	if($regressionsLeftUntilTheNextRegressor == 0){
+		$regressionsLeftUntilTheNextRegressor = $taskGroupSize;
+		$currentRegressor++;
+	}
+
+$sql = "UPDATE clean_up SET who_id="  .  $user_ids[$currentRegressor]  .  " WHERE name='"  .  $clean_upNames[$i] . "'";
+	$conn->query($sql);
+	$regressionsLeftUntilTheNextRegressor--;
+	
+$sql = "SELECT difficulty FROM clean_up WHERE name = '" . $clean_upNames[$i] . "'";
+$task_difficulty_result = $conn->query($sql);
+    $task_difficulty_row = $task_difficulty_result->fetch_assoc();
+    $task_difficulty = $task_difficulty_row['difficulty'];
+   
+$sql = "UPDATE dle_users SET difficulty_Elo = difficulty_Elo + " . $task_difficulty . " WHERE user_id = '" . $user_ids[$currentRegressor] . "'";
+$conn->query($sql);
+}
+}
 
 
 
@@ -146,10 +196,8 @@ if ($result = $conn->query($sql)) {
 		
     }
     echo "</table>";
+echo '<button onclick="resetELOscores()">Reset ELO here</button>';
     $result->free();
-} else {
-    echo "Ошибка: " . $conn->error;
 }
-
 mysqli_close($conn);
 ?>

@@ -44,7 +44,7 @@ console.log(numberChildren);
 	 $.ajax({
                     type: "POST",
                     url: "workCheckUpdater.php",
-                    data: `id=${childrenAndIds[1][numberChildren]}`,
+                    data: `id=${index}`,
                     success: function(data){
                      console.log(data);
                   

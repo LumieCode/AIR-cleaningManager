@@ -10,6 +10,11 @@
 <body>
 
     <script>
+function resetELOscores(){
+$.get("ELOreset.php", function(){
+console.log("ELOs reseted");
+});
+}
 let childrenAndIds;
 let i = 0;
 $.get("getUsers.php", function(data1){
