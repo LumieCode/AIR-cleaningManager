@@ -1,41 +1,51 @@
 <?php
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
 
-$conn = mysqli_connect("localhost", "iva", "12345", "cw");
+// Establish database connection
+$databaseHost = "localhost";
+$databaseUser = "iva";
+$databasePassword = "12345";
+$databaseName = "cw";
+$conn = mysqli_connect($databaseHost, $databaseUser, $databasePassword, $databaseName);
 
+// Set default timezone
+date_default_timezone_set('Africa/Cairo');
 
-$sql = "SELECT * FROM dle_users";
-if ($result = $conn->query($sql)) {
-    while ($row = $result->fetch_assoc()) {
-        $query = "SELECT time_end FROM log_action WHERE task_id = 5 AND user_id = " . $row["user_id"];
-        $resEndTime = $conn->query($query);
-        if ($resEndTime->num_rows > 0) {
-            $resEndTimeArray = $resEndTime->fetch_assoc();
-            $given_datetime = $resEndTimeArray['time_end'];
+// Retrieve users from the "dle_users" table
+$selectUsersQuery = "SELECT * FROM dle_users";
+if ($usersResult = $conn->query($selectUsersQuery)) {
+    while ($userRow = $usersResult->fetch_assoc()) {
+        // Get the end time for a specific task and user from the "log_action" table
+        $selectEndTimeQuery = "SELECT time_end FROM log_action WHERE task_id = 5 AND user_id = " . $userRow["user_id"];
+        $endTimeResult = $conn->query($selectEndTimeQuery);
+        if ($endTimeResult->num_rows > 0) {
+            $endTimeRow = $endTimeResult->fetch_assoc();
+            $givenDatetime = $endTimeRow['time_end'];
             $currentDateTime = new DateTime();
-            $given_datetime = new DateTime($given_datetime);
-            $timeDifference = $currentDateTime->diff($given_datetime);
-            
-            if ($timeDifference->days < 7) {
+            $givenDatetime = new DateTime($givenDatetime);
+            $timeDifference = $currentDateTime->diff($givenDatetime);
 
-                $stmt = $conn->prepare("UPDATE dle_users SET cleanerPosition = ? WHERE user_id = ?");
+            // Check if the time difference is less than 2 days
+            if ($timeDifference->days < 2) {
+                // Update "cleanerPosition" to 1 for the user
+                $updatePositionQuery = "UPDATE dle_users SET cleanerPosition = ? WHERE user_id = ?";
                 $completionStatusSend = 1;
-                $who_idSend = $row["user_id"];
-                $stmt->bind_param("ii", $completionStatusSend, $who_idSend);
-                
+                $whoIdSend = $userRow["user_id"];
+                $stmt = $conn->prepare($updatePositionQuery);
+                $stmt->bind_param("ii", $completionStatusSend, $whoIdSend);
+
                 if ($stmt->execute()) {
                     $successMsg = 'Record updated successfully';
                 } else {
                     $errorMsg = 'Error updating record: ' . $stmt->error;
                 }
             } else {
-                $stmt = $conn->prepare("UPDATE dle_users SET cleanerPosition = ? WHERE user_id = ?");
+                // Update "cleanerPosition" to 0 for the user
+                $updatePositionQuery = "UPDATE dle_users SET cleanerPosition = ? WHERE user_id = ?";
                 $completionStatusSend = 0;
-                $who_idSend = $row["user_id"];
-                $stmt->bind_param("ii", $completionStatusSend, $who_idSend);
-                
+                $whoIdSend = $userRow["user_id"];
+                $stmt = $conn->prepare($updatePositionQuery);
+                $stmt->bind_param("ii", $completionStatusSend, $whoIdSend);
+
                 if ($stmt->execute()) {
                     $successMsg = 'Record updated successfully';
                 } else {
@@ -46,163 +56,172 @@ if ($result = $conn->query($sql)) {
     }
 }
 
-
-
-$sql = "SELECT time_start FROM log_action WHERE 1=1";
-$date_inDB_result = $conn->query($sql);
-$date_inDB_row = mysqli_fetch_assoc($date_inDB_result);
-$date_inDB = date('Y-m-d', strtotime($date_inDB_row['time_start']));
+// Check if today's date is different from the date in the "clean_up" table
+$selectResetDateQuery = "SELECT date_Reseted FROM clean_up WHERE 1=1";
+$dateResult = $conn->query($selectResetDateQuery);
+$dateRow = mysqli_fetch_assoc($dateResult);
+$dateInDB = date('Y-m-d', strtotime($dateRow['date_Reseted']));
 $today = date('Y-m-d');
 
+if ($today != $dateInDB) {
+    // Select user_ids from "dle_users" where cleanerPosition is 1, ordered by difficulty_Elo
+    $selectUserIdsQuery = "SELECT user_id FROM dle_users WHERE cleanerPosition = 1 ORDER BY difficulty_Elo";
+    $result = $conn->query($selectUserIdsQuery);
+    $count = $result->num_rows;
+    $userIds = array();
 
-if($today != $date_inDB{
-$sql = "SELECT user_id FROM dle_users WHERE cleanerPosition = 1 ORDER BY difficulty_Elo";
-$result = $conn->query($sql);
-$count = $result->num_rows;
-$user_ids = array(); // Initialize an empty array
+    if ($count > 0) {
+        $rows = mysqli_fetch_all($result, MYSQLI_ASSOC);
+        $userIds = array_column($rows, 'user_id');
+    }
 
-if ($count > 0) {
-    $rows = mysqli_fetch_all($result, MYSQLI_ASSOC);
-    $user_ids = array_column($rows, 'user_id');
+    // Select names from "clean_up" ordered by difficulty
+    $selectCleanUpNamesQuery = "SELECT name FROM clean_up ORDER BY difficulty DESC";
+    $res = $conn->query($selectCleanUpNamesQuery);
+    $cleanUpCount = $res->num_rows;
+    $cleanUpNames = array();
+
+    if ($cleanUpCount > 0) {
+        $resRows = mysqli_fetch_all($res, MYSQLI_ASSOC);
+        $cleanUpNames = array_column($resRows, 'name');
+    }
+
+    for ($i = 0; $i < $cleanUpCount; $i++) {
+        // Update "date_Reseted" for each row in "clean_up"
+        $updateResetDateQuery = "UPDATE clean_up SET date_Reseted = ? WHERE id = ?";
+        $stmt = $conn->prepare($updateResetDateQuery);
+        $stmt->bind_param("si", date('Y-m-d'), ($i + 2));
+        $stmt->execute();
+    }
+
+    $taskGroupRemainder = $cleanUpCount % $count;
+    $taskGroupSize = ($cleanUpCount - $taskGroupRemainder) / $count;
+    $currentRegressor = 0;
+    $regressionsLeftUntilTheNextRegressor = $taskGroupSize;
+
+    for ($i = 0; $i < count($cleanUpNames); $i++) {
+        if ($regressionsLeftUntilTheNextRegressor == 0) {
+            $regressionsLeftUntilTheNextRegressor = $taskGroupSize;
+            $currentRegressor++;
+        }
+
+        // Update "who_id" for each row in "clean_up"
+        $updateWhoIdQuery = "UPDATE clean_up SET who_id = ? WHERE name = ?";
+        $stmt = $conn->prepare($updateWhoIdQuery);
+        $stmt->bind_param("is", $userIds[$currentRegressor], $cleanUpNames[$i]);
+        $stmt->execute();
+
+        // Get task difficulty
+        $selectDifficultyQuery = "SELECT difficulty FROM clean_up WHERE name = ?";
+        $stmt = $conn->prepare($selectDifficultyQuery);
+        $stmt->bind_param("s", $cleanUpNames[$i]);
+        $stmt->execute();
+        $taskDifficultyResult = $stmt->get_result();
+        $taskDifficultyRow = $taskDifficultyResult->fetch_assoc();
+        $taskDifficulty = $taskDifficultyRow['difficulty'];
+
+        // Update "difficulty_Elo" for the user in "dle_users"
+        $updateEloQuery = "UPDATE dle_users SET difficulty_Elo = difficulty_Elo + ? WHERE user_id = ?";
+        $stmt = $conn->prepare($updateEloQuery);
+        $stmt->bind_param("ii", $taskDifficulty, $userIds[$currentRegressor]);
+        $stmt->execute();
+
+        $regressionsLeftUntilTheNextRegressor--;
+    }
 }
 
-$query = "SELECT name FROM clean_up  ORDER BY difficulty DESC";
-$res =  $conn->query($query);
-$clean_up = $res->num_rows;
-$clean_upNames = array(); // Initialize an empty array
+// Select data from "clean_up" and "dle_users" tables and display in a table
+$selectDataQuery = "SELECT clean_up.name, id, who_id, when_, active, difficulty, date_Checked, dle_users.name AS uname
+    FROM clean_up
+    LEFT JOIN dle_users ON dle_users.user_id = who_id
+    ORDER BY difficulty DESC";
 
-if ($clean_up > 0) {
-    $res_rows = mysqli_fetch_all($res, MYSQLI_ASSOC);
-    $clean_upNames = array_column($res_rows, 'name');
-}
-
-$taskGroupRemainder = $clean_up % $count;
-
-$taskGroupSize = ($clean_up - $taskGroupRemainder) / $count;
-
-$currentRegressor = 0;
-$regressionsLeftUntilTheNextRegressor = $taskGroupSize;// i was binging ORV the day before :)
-for ($i = 0; $i < count($clean_upNames); $i++) {
-	
-	if($regressionsLeftUntilTheNextRegressor == 0){
-		$regressionsLeftUntilTheNextRegressor = $taskGroupSize;
-		$currentRegressor++;
-	}
-
-$sql = "UPDATE clean_up SET who_id="  .  $user_ids[$currentRegressor]  .  " WHERE name='"  .  $clean_upNames[$i] . "'";
-	$conn->query($sql);
-	$regressionsLeftUntilTheNextRegressor--;
-	
-$sql = "SELECT difficulty FROM clean_up WHERE name = '" . $clean_upNames[$i] . "'";
-$task_difficulty_result = $conn->query($sql);
-    $task_difficulty_row = $task_difficulty_result->fetch_assoc();
-    $task_difficulty = $task_difficulty_row['difficulty'];
-   
-$sql = "UPDATE dle_users SET difficulty_Elo = difficulty_Elo + " . $task_difficulty . " WHERE user_id = '" . $user_ids[$currentRegressor] . "'";
-$conn->query($sql);
-}
-}
-
-
-
-
-
-$sql = "SELECT clean_up.name, id, who_id, when_, active, difficulty, date_Checked, dle_users.name AS uname 
-        FROM clean_up 
-        LEFT JOIN dle_users ON dle_users.user_id = who_id
-        ORDER BY difficulty DESC";
-// gets a bunch of stuff from the table
-if ($result = $conn->query($sql)) {
-
-    $rowsCount = $result->num_rows; // количество полученных строк
+if ($result = $conn->query($selectDataQuery)) {
+    $rowsCount = $result->num_rows;
     echo "<p>Получено объектов: $rowsCount</p>";
     echo "<table><tr><th>id</th><th>name</th><th>username</th><th>who_id</th></tr>";
 
-    $i = 0;
     foreach ($result as $row) {
-        $appliedStyle = "background-color:#FF5C5C"; // light red colour
-
-        // gets the name of the person based on who_id
-        $query = "SELECT name FROM dle_users WHERE user_id =" . $row["who_id"];
-        $res = mysqli_query($conn, $query);
+        $appliedStyle = "background-color:#FF5C5C";
+        $query = "SELECT name FROM dle_users WHERE user_id = ?";
+        $stmt = $conn->prepare($query);
+        $stmt->bind_param("i", $row["who_id"]);
+        $stmt->execute();
+        $res = $stmt->get_result();
         $resArray = mysqli_fetch_array($res);
 
         date_default_timezone_set('Africa/Cairo');
-
-        // Get today's date in the format "Y-m-d" (e.g. 2023-03-23)
         $today = date('Y-m-d');
 
-        // gets the time the user finished his daily duty
-        $query = "SELECT time_end FROM log_action WHERE task_id = 5 and user_id = " . $row["who_id"];
-        $resEndTime = mysqli_query($conn, $query);
+        $query = "SELECT time_end FROM log_action WHERE task_id = 5 AND user_id = ?";
+        $stmt = $conn->prepare($query);
+        $stmt->bind_param("i", $row["who_id"]);
+        $stmt->execute();
+        $resEndTime = $stmt->get_result();
         $resEndTimeArray = mysqli_fetch_array($resEndTime);
-        $given_datetime = $resEndTimeArray['time_end'];
+        $givenDatetime = $resEndTimeArray['time_end'];
 
-        // Transforms the date time into a date
-        $given_date = date('Y-m-d', strtotime($given_datetime));
+        $givenDate = date('Y-m-d', strtotime($givenDatetime));
 
-        // Compare today's date with the given date
-        if ($given_date == $today){
-			$task_accomplished_today = true;
-		if ($row['date_Checked'] == $today){
-            $checkedToday = true;
-            $reset == false;
-			}
-    else {
-            $reset = true;
+        if ($givenDate == $today) {
+            $taskAccomplishedToday = true;
+
+            if ($row['date_Checked'] == $today) {
+                $checkedToday = true;
+                $reset = false;
+            } else {
+                $reset = true;
+            }
+        } else {
+            $taskAccomplishedToday = false;
         }
-		}
-		else{
-		$task_accomplished_today = false;
-		}
 
         if ($reset) {
-            // Prepare and execute query
             $stmt = mysqli_prepare($conn, "UPDATE clean_up SET checked = ?, date_Checked = ? WHERE who_id = ?");
-            $who_idSend = mysqli_real_escape_string($conn, $who_id);
+            $whoIdSend = mysqli_real_escape_string($conn, $whoId);
             $completionStatusSend = 0;
-            $date_Checked = gmdate('Y-m-d H:i:s', time() + 2 * 60 * 60); // Egypt time is 2 hours ahead of GMT
-            mysqli_stmt_bind_param($stmt, "isi", $completionStatusSend, $date_Checked, $row['who_id']);
+            $dateChecked = gmdate('Y-m-d H:i:s');
+            mysqli_stmt_bind_param($stmt, "iss", $completionStatusSend, $dateChecked, $row['who_id']);
             if (mysqli_stmt_execute($stmt)) {
-                // Query successful
                 $successMsg = 'Record updated successfully';
             } else {
-                // Query failed
                 $errorMsg = 'Error updating record: ' . mysqli_error($conn);
             }
         }
-       
-        $query = "SELECT id FROM log_action WHERE task_id = 5 and user_id = " . $row["who_id"];
-        // gets all the daily duty activities of the currently processed user
-        $res = mysqli_query($conn, $query);
 
-        
+        $query = "SELECT id FROM log_action WHERE task_id = 5 AND user_id = ?";
+        $stmt = $conn->prepare($query);
+        $stmt->bind_param("i", $row["who_id"]);
+        $stmt->execute();
+        $res = $stmt->get_result();
 
-		
-        if ($res->num_rows > 0 && $task_accomplished_today == true) {
-            $query = "SELECT checked FROM clean_up WHERE checked = 1 and id =" . $row["id"];
-            $res = mysqli_query($conn, $query);
+        if ($res->num_rows > 0 && $taskAccomplishedToday == true) {
+            $query = "SELECT checked FROM clean_up WHERE checked = 1 AND id = ?";
+            $stmt = $conn->prepare($query);
+            $stmt->bind_param("i", $row["id"]);
+            $stmt->execute();
+            $res = $stmt->get_result();
             if ($res->num_rows > 0 && $checkedToday) {
                 $appliedStyle = "background-color:lightblue";
             } else {
                 $appliedStyle = "background-color:lightgreen";
             }
         }
-        $i = $i + 1;
+
         echo "<tr>";
         echo "<td>" . $row["id"] . "</td>";
         echo "<td class='locations' onclick='updateCompletionStatus(" . $row["id"] . ")'>" . $row["name"] . "</td>";
-        echo "<td style='$appliedStyle' class='hobbits' data-userid=" . $row["who_id"] . " onclick='jf(" . $row["id"] . ")'  id=" . $row["id"] . ">" . $resArray[0] . "</td> ";
-        echo "<td " . "class='executorIds'>" . $row["who_id"] . "</td>";
-        echo "<td class='difficulty'>" . $row['difficulty'] . "</td>";
-		
-		
-		
-		
+        echo "<td style='$appliedStyle' class='hobbits' data-userid=" . $row["who_id"] . " onclick='jf(" . $row["id"] . ")' id=" . $row["id"] . ">" . $resArray[0] . "</td> ";
+        echo "<td>" . $row["who_id"] . "</td>";
+        echo "</tr>";
     }
     echo "</table>";
 echo '<button onclick="resetELOscores()">Reset ELO here</button>';
-    $result->free();
+} else {
+    echo "Error: " . $conn->error;
 }
-mysqli_close($conn);
+
+// Close database connection
+$conn->close();
+
 ?>

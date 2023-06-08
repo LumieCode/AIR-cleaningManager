@@ -1,6 +1,7 @@
 <?php
 
 $conn = mysqli_connect("localhost", "iva", "12345", "cw");
+date_default_timezone_set('Africa/Cairo');
 
 
 $sql = "SELECT * FROM dle_users";
@@ -15,7 +16,7 @@ if ($result = $conn->query($sql)) {
             $given_datetime = new DateTime($given_datetime);
             $timeDifference = $currentDateTime->diff($given_datetime);
             
-            if ($timeDifference->days < 7) {
+            if ($timeDifference->days < 2) {
 
                 $stmt = $conn->prepare("UPDATE dle_users SET cleanerPosition = ? WHERE user_id = ?");
                 $completionStatusSend = 1;
@@ -45,14 +46,15 @@ if ($result = $conn->query($sql)) {
 
 
 
-$sql = "SELECT time_start FROM log_action WHERE 1=1";
+$sql = "SELECT date_Reseted FROM clean_up WHERE 1=1";
 $date_inDB_result = $conn->query($sql);
 $date_inDB_row = mysqli_fetch_assoc($date_inDB_result);
-$date_inDB = date('Y-m-d', strtotime($date_inDB_row['time_start']));
+$date_inDB = date('Y-m-d', strtotime($date_inDB_row['date_Reseted']));
 $today = date('Y-m-d');
 
 
 if($today != $date_inDB){
+
 $sql = "SELECT user_id FROM dle_users WHERE cleanerPosition = 1 ORDER BY difficulty_Elo";
 $result = $conn->query($sql);
 $count = $result->num_rows;
@@ -71,6 +73,12 @@ $clean_upNames = array(); // Initialize an empty array
 if ($clean_up > 0) {
     $res_rows = mysqli_fetch_all($res, MYSQLI_ASSOC);
     $clean_upNames = array_column($res_rows, 'name');
+}
+for ($i = 0; $i < $clean_up; $i++) {
+    $sql = "UPDATE clean_up SET date_Reseted='"  .  date('Y-m-d')  .  "' WHERE id='"  .  ($i + 2) . "'";
+    $result = $conn->query($sql);
+    
+
 }
 
 $taskGroupRemainder = $clean_up % $count;
@@ -158,7 +166,7 @@ if ($result = $conn->query($sql)) {
             $stmt = mysqli_prepare($conn, "UPDATE clean_up SET checked = ?, date_Checked = ? WHERE who_id = ?");
             $who_idSend = mysqli_real_escape_string($conn, $who_id);
             $completionStatusSend = 0;
-            $date_Checked = gmdate('Y-m-d H:i:s', time() + 2 * 60 * 60); // Egypt time is 2 hours ahead of GMT
+            $date_Checked = gmdate('Y-m-d H:i:s'); \
             mysqli_stmt_bind_param($stmt, "isi", $completionStatusSend, $date_Checked, $row['who_id']);
             if (mysqli_stmt_execute($stmt)) {
                 // Query successful
